@@ -2,7 +2,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import { connectDB, getDB } from "./config/db.js";
-
+import otpRoutes from "./routes/otpRoutes.js";
 import logger from "./config/logger.js";
 import { Buffer } from "buffer";
 
@@ -15,6 +15,7 @@ app.use(express.json());
 connectDB();
 
 // Health endpoint
+app.use("/api/auth", otpRoutes);
 app.get("/health", async (req, res) => {
   let dbStatus = "disconnected";
 
@@ -49,12 +50,6 @@ app.get("/health", async (req, res) => {
 
   // Send response in one contiguous write (no chunked transfer)
   res.end(jsonString);
-});
-
-// Global error handler
-app.use((err, req, res, next) => {
-  logger.error(err);
-  res.status(500).json({ error: err.message || "Server Error" });
 });
 
 // Global error handler
