@@ -1,0 +1,17 @@
+.env
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Environment variables
+.env
+
+# RSA keys
+keys/
+
+# OS files
+.DS_Store
+Thumbs.db
