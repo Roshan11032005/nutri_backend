@@ -1,5 +1,6 @@
 {
   "name": "nutri_backend",
+  "type": "module",
   "version": "1.0.0",
   "description": "backend for nutri_bowel",
   "main": "index.js",
@@ -8,5 +9,11 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "mongodb": "^6.20.0",
+    "winston": "^3.18.3"
+  }
 }
