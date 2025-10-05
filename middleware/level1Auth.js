@@ -12,7 +12,7 @@ export default function requireLevel1JWT(req, res, next) {
   const token = authHeader.split(" ")[1];
   const decoded = verifyJWT(token);
 
-  if (!decoded || !decoded.username) {
+  if (!decoded || decoded.type !== "l1" || !decoded.username) {
     return res.status(401).json({ error: "Invalid or expired Level-1 token" });
   }
 

@@ -15,6 +15,19 @@ export const ipRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limit by user ID or username (refresh_token endpoint)
+ */
+export const refreshTokenRateLimiter = rateLimit({
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+  }),
+  keyGenerator: (req) => req.userId || req.body.username, // per user
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 5, // max 5 refresh requests per user per minute
+  message: "Too many token refresh requests. Try again later.",
+});
+
+/**
  * Rate limit by username (submit_otp endpoint)
  */
 export const usernameRateLimiter = rateLimit({
