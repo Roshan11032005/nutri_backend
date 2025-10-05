@@ -1,64 +1,44 @@
 // server.js
 import express from "express";
 import dotenv from "dotenv";
-import { connectDB, getDB } from "./config/db.js";
+import { connectDB } from "./config/db.js";
 import otpRoutes from "./routes/otpRoutes.js";
-import logger from "./config/logger.js";
-import { Buffer } from "buffer";
 import refreshRoute from "./routes/refreshToken.js";
+import logger from "./config/logger.js";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-// Connect DB
-connectDB();
+await connectDB(); // Wait for DB connection before handling requests
 
-// Health endpoint
 app.use("/api/auth", otpRoutes);
 app.use("/api/auth", refreshRoute);
+
 app.get("/health", async (req, res) => {
   let dbStatus = "disconnected";
-
   try {
-    // Ping MongoDB to check connectivity
-    const db = getDB();
+    const db = await connectDB(); // Reuse connection
     await db.command({ ping: 1 });
     dbStatus = "connected";
-    logger.info("sabh chnagasi");
   } catch (err) {
-    logger.error("MongoDB health check failed:", err);
     dbStatus = "disconnected";
-    logger.info("chudgaya guru");
   }
 
-  // Build payload
-  const payload = {
+  res.json({
     status: "ok",
     message: "Server healthy",
     database: dbStatus,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-  };
-
-  // Serialize JSON and precompute byte length
-  const jsonString = JSON.stringify(payload);
-  const byteLength = Buffer.byteLength(jsonString, "utf8");
-
-  // Set headers
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Content-Length", byteLength);
-
-  // Send response in one contiguous write (no chunked transfer)
-  res.end(jsonString);
+  });
 });
 
-// Global error handler
+// Error handler
 app.use((err, req, res, next) => {
   logger.error(err);
   res.status(500).json({ error: err.message || "Server Error" });
 });
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => logger.info(`🚀 Server running on port ${PORT}`));
+export default app; // ✅ Export app for Vercel
