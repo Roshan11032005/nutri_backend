@@ -5,6 +5,7 @@ import { connectDB, getDB } from "./config/db.js";
 import otpRoutes from "./routes/otpRoutes.js";
 import logger from "./config/logger.js";
 import { Buffer } from "buffer";
+import refreshRoute from "./routes/refreshToken.js";
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ connectDB();
 
 // Health endpoint
 app.use("/api/auth", otpRoutes);
+app.use("/api/auth", refreshRoute);
 app.get("/health", async (req, res) => {
   let dbStatus = "disconnected";
 
