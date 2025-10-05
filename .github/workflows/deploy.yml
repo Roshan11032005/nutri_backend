@@ -3,8 +3,8 @@ name: CI/CD to Railway (Docker)
 on:
   push:
     branches:
-      - main # deploy when main branch is updated
-  workflow_dispatch: # manual trigger option
+      - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -23,12 +23,7 @@ jobs:
       - name: Install Railway CLI
         run: curl -fsSL https://railway.app/install.sh | sh
 
-      - name: Login to Railway
-        run: railway login --apiKey ${{ secrets.RAILWAY_API_KEY }}
-
-      - name: Link Railway project
-        run: railway link ${{ secrets.RAILWAY_PROJECT_ID }}
-
-      - name: Deploy Docker container to Railway
+      - name: Deploy to Railway
         run: |
+          echo "${{ secrets.RAILWAY_TOKEN }}" | railway login --token-file -
           railway up --detach --docker
