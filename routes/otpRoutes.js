@@ -1,7 +1,6 @@
 import express from "express";
 import { sendOTP, verifyOTP } from "../repositories/otpRepository.js";
 import { ipRateLimiter, usernameRateLimiter } from "../config/rateLimit.js";
-
 import User from "../models/User.js";
 import logger from "../config/logger.js";
 import { signJWT } from "../utils/jwt.js";
@@ -10,13 +9,10 @@ import { Buffer } from "buffer";
 
 const router = express.Router();
 
-/**
- * Helper to send precomputed JSON response
- */
+// Helper to send JSON
 const sendJSON = (res, payload, status = 200) => {
   const jsonString = JSON.stringify(payload);
   const byteLength = Buffer.byteLength(jsonString, "utf8");
-
   res.status(status);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Length", byteLength);
@@ -36,44 +32,36 @@ router.post("/send_email", ipRateLimiter, async (req, res) => {
     return sendJSON(res, { error: "Email or username is required" }, 400);
   }
 
-  // Special dev/test email
-  if (email === "roshanzameer000111@gmail.com") {
-    const otp = await sendOTP("roshanzameer000111@gmail.com", "roshan");
-    const level1Token = signJWT({ username: "roshan", type: "l1" }, "50m");
+  try {
+    // Dev/test user
+    let userIdentifier;
+    if (email === "roshanzameer000111@gmail.com") {
+      userIdentifier = "roshan"; // username as Redis key
+    } else {
+      const user = await User.findOne({
+        $or: [{ email: email || null }, { name: username || null }],
+      });
+      if (!user) {
+        logger.warn("Send OTP failed: user not found", { email, username });
+        return sendJSON(res, { error: "User not found" }, 404);
+      }
+      userIdentifier = user.name; // username as Redis key
+    }
 
-    logger.info("OTP sent successfully", {
-      email: "roshanzameer000111@gmail.com",
-      username: "roshan",
-    });
+    const otp = await sendOTP(userIdentifier);
+    const level1Token = signJWT(
+      { username: userIdentifier, type: "l1" },
+      "50m",
+    );
 
+    logger.info("OTP sent successfully", { username: userIdentifier });
     return sendJSON(res, {
       message: "OTP sent successfully",
       token: level1Token,
     });
-  }
-
-  try {
-    const user = await User.findOne({
-      $or: [{ email: email || null }, { name: username || null }],
-    });
-
-    if (!user) {
-      logger.warn("Send OTP failed: user not found", { email, username });
-      return sendJSON(res, { error: "User not found" }, 404);
-    }
-
-    const otp = await sendOTP(user.email, user.name);
-    const level1Token = signJWT({ username: user.name, type: "l1" }, "10m");
-
-    logger.info("OTP sent successfully", {
-      email: user.email,
-      username: user.name,
-    });
-
-    sendJSON(res, { message: "OTP sent successfully", token: level1Token });
   } catch (err) {
     logger.error("Failed to send OTP", { error: err.message, email, username });
-    sendJSON(res, { error: "Failed to send OTP" }, 500);
+    return sendJSON(res, { error: "Failed to send OTP" }, 500);
   }
 });
 
@@ -103,13 +91,13 @@ router.post(
 
       logger.info("OTP verified successfully", { username });
 
-      // Generate Level-2 JWT (session token, 2 hours)
+      // Level-2 JWT (session token, 2 hours)
       const sessionToken = signJWT({ username, type: "l2" }, "2h");
 
-      // Generate Refresh token (7 days)
+      // Refresh token (7 days)
       const refreshToken = signJWT({ username, type: "refresh" }, "7d");
 
-      sendJSON(res, {
+      return sendJSON(res, {
         message: "OTP verified successfully",
         sessionToken,
         refreshToken,
@@ -120,7 +108,7 @@ router.post(
         username,
         otp,
       });
-      sendJSON(res, { error: "Internal server error" }, 500);
+      return sendJSON(res, { error: "Internal server error" }, 500);
     }
   },
 );

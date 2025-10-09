@@ -1,55 +1,45 @@
-// server.js
 import express from "express";
 import dotenv from "dotenv";
-import fs from "fs";
-import path from "path";
-import crypto from "crypto";
 import { connectDB } from "./config/db.js";
 import otpRoutes from "./routes/otpRoutes.js";
 import refreshRoute from "./routes/refreshToken.js";
+import UserRoutes from "./routes/UserRoutes.js";
 import logger from "./config/logger.js";
+import fs from "fs";
+import path from "path";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-// ====== RSA Key Generation ======
-const keysDir = path.join(process.cwd(), "keys");
-if (!fs.existsSync(keysDir)) {
-  fs.mkdirSync(keysDir);
-}
+// ====== Trust proxy (fix X-Forwarded-For warning) ======
+app.set("trust proxy", 1); // trust first proxy (needed for rate-limit)
 
+// ====== Check if keys exist ======
+const keysDir = path.join(process.cwd(), "keys");
 const privateKeyPath = path.join(keysDir, "private.key");
 const publicKeyPath = path.join(keysDir, "public.key");
 
 if (!fs.existsSync(privateKeyPath) || !fs.existsSync(publicKeyPath)) {
-  console.log("Generating RSA key pair...");
-
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
-    modulusLength: 2048,
-    publicKeyEncoding: {
-      type: "spki",
-      format: "pem",
-    },
-    privateKeyEncoding: {
-      type: "pkcs8",
-      format: "pem",
-    },
-  });
-
-  fs.writeFileSync(privateKeyPath, privateKey);
-  fs.writeFileSync(publicKeyPath, publicKey);
-
-  console.log("RSA key pair generated at /keys");
+  console.error("❌ RSA keys not found! Run 'node generateKeys.js' first.");
+  process.exit(1);
 }
 
+const privateKey = fs.readFileSync(privateKeyPath, "utf8");
+const publicKey = fs.readFileSync(publicKeyPath, "utf8");
+
 // ====== Connect to MongoDB ======
-connectDB();
+connectDB().catch((err) => {
+  console.error("❌ Failed to connect to MongoDB:", err.message);
+  process.exit(1);
+});
 
 // ====== Routes ======
 app.use("/api/auth", otpRoutes);
 app.use("/api/auth", refreshRoute);
+
+app.use("/api", UserRoutes);
 
 // ====== Health Check ======
 app.get("/health", async (req, res) => {
@@ -71,9 +61,9 @@ app.get("/health", async (req, res) => {
   });
 });
 
-// ====== Error Handler ======
+// ====== Global Error Handler ======
 app.use((err, req, res, next) => {
-  logger.error(err);
+  logger.error(err.stack || err.message);
   res.status(500).json({ error: err.message || "Server Error" });
 });
 
