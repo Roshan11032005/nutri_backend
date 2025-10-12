@@ -2,7 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import { connectDB } from "./config/db.js";
 import otpRoutes from "./routes/otpRoutes.js";
-import refreshRoute from "./routes/refreshToken.js";
+
 import UserRoutes from "./routes/UserRoutes.js";
 import logger from "./config/logger.js";
 import fs from "fs";
@@ -37,7 +37,6 @@ connectDB().catch((err) => {
 
 // ====== Routes ======
 app.use("/api/auth", otpRoutes);
-app.use("/api/auth", refreshRoute);
 
 app.use("/api", UserRoutes);
 
@@ -68,7 +67,7 @@ app.use((err, req, res, next) => {
 });
 
 // ====== Start Server ======
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8089;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
