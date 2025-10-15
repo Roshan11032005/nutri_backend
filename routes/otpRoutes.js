@@ -35,39 +35,83 @@ const sendJSON = (res, payload, status = 200) => {
 /**
  * Send OTP and generate Level-1 JWT
  */
+
 router.post("/send_email", ipRateLimiter, async (req, res) => {
   const { email, username } = req.body;
-  if (!email && !username)
+  logger.info("Received OTP request", { email, username });
+
+  if (!email && !username) {
+    logger.warn("No email or username provided");
     return sendJSON(res, { error: "Email or username is required" }, 400);
+  }
 
   try {
     const db = getDB();
-    if (!db) throw new Error("Database not connected");
-
-    let userIdentifier;
-    if (email === "roshanzameer000111@gmail.com") {
-      userIdentifier = "roshan";
-    } else {
-      const user = await db.collection("users").findOne({
-        $or: [{ email: email || null }, { name: username || null }],
-      });
-      if (!user) return sendJSON(res, { error: "User not found" }, 404);
-      userIdentifier = user.name;
+    if (!db) {
+      logger.error("Database not connected");
+      throw new Error("Database not connected");
     }
 
-    const otp = await sendOTP(userIdentifier);
-    const level1Token = signJWT(
-      { username: userIdentifier, type: "l1" },
-      "50m",
-    );
+    // ✅ Build a more flexible query (case-insensitive)
+    const query = {
+      $or: [
+        email ? { email: email.toLowerCase() } : null,
+        username
+          ? { name: { $regex: new RegExp(`^${username}$`, "i") } }
+          : null,
+        username
+          ? { username: { $regex: new RegExp(`^${username}$`, "i") } }
+          : null,
+      ].filter(Boolean),
+    };
 
-    logger.info("OTP sent successfully", { username: userIdentifier });
+    logger.info("Querying database for user", { query });
+
+    const user = await db.collection("users").findOne(query);
+
+    if (!user) {
+      logger.warn("User not found in database", { query });
+      return sendJSON(res, { error: "User not found" }, 404);
+    }
+
+    const userEmail = user.email;
+    const userName = user.name || user.username || user.email;
+
+    if (!userEmail) {
+      logger.error("User record missing email", { user });
+      return sendJSON(res, { error: "User email missing in database" }, 400);
+    }
+
+    logger.info("User found", { userEmail, userName });
+
+    let otp;
+    try {
+      logger.info("Sending OTP via nodemailer...", { userEmail, userName });
+      otp = await sendOTP(userEmail, userName);
+      logger.info("OTP sent successfully", { userEmail, otp });
+    } catch (otpErr) {
+      logger.error("sendOTP failed", {
+        error: otpErr.message,
+        stack: otpErr.stack,
+        userEmail,
+      });
+      return sendJSON(res, { error: "Failed to send OTP" }, 500);
+    }
+
+    const level1Token = signJWT({ username: userName, type: "l1" }, "50m");
+    logger.info("Returning Level-1 JWT", { userName });
+
     return sendJSON(res, {
       message: "OTP sent successfully",
       token: level1Token,
     });
   } catch (err) {
-    logger.error("Failed to send OTP", { error: err.message, email, username });
+    logger.error("Unhandled error in /send_email", {
+      error: err.message,
+      stack: err.stack,
+      email,
+      username,
+    });
     return sendJSON(res, { error: "Failed to send OTP" }, 500);
   }
 });

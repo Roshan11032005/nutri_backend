@@ -2,15 +2,26 @@ import express from "express";
 import dotenv from "dotenv";
 import { connectDB } from "./config/db.js";
 import otpRoutes from "./routes/otpRoutes.js";
-
 import UserRoutes from "./routes/UserRoutes.js";
 import logger from "./config/logger.js";
 import fs from "fs";
 import path from "path";
-
+import cors from "cors";
+import searchfood from "./routes/searchfood.js";
 dotenv.config();
 
 const app = express();
+
+// ====== CORS Configuration ======
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  }),
+);
+
 app.use(express.json());
 
 // ====== Trust proxy (fix X-Forwarded-For warning) ======
@@ -37,8 +48,8 @@ connectDB().catch((err) => {
 
 // ====== Routes ======
 app.use("/api/auth", otpRoutes);
-
 app.use("/api", UserRoutes);
+app.use("/api/food", searchfood);
 
 // ====== Health Check ======
 app.get("/health", async (req, res) => {
