@@ -24,7 +24,7 @@ const createRedisRateLimiter = ({ windowMs, max, keyGenerator, message }) =>
  */
 export const ipRateLimiter = createRedisRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20,
+  max: 30,
   message: "Too many requests from this IP. Try again later.",
   keyGenerator: ipKeyGenerator, // ✅ IPv6 safe
 });
@@ -60,4 +60,11 @@ export const refreshTokenRateLimiter = createRedisRateLimiter({
   max: 5,
   message: "Too many token refresh requests. Try again later.",
   keyGenerator: (req) => req.userId || req.body.username,
+});
+
+export const searchRateLimiter = createRedisRateLimiter({
+  windowMs: 24 * 60 * 60 * 1000, // 24 hours
+  max: 1000,
+  message: "Too many OTP attempts for this user today. Try again tomorrow.",
+  keyGenerator: (req) => req.body.username || req.body.email,
 });
