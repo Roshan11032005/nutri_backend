@@ -1,18 +1,26 @@
 import express from "express";
 import dotenv from "dotenv";
-import { connectDB } from "./config/db.js";
+import { connectDB } from "./config/db.js"; // Your MongoDB connection function
+// Import all necessary routes (assuming they use Mongoose models)
 import otpRoutes from "./routes/otpRoutes.js";
 import UserRoutes from "./routes/UserRoutes.js";
+import signuproute from "./routes/registration.js";
+import imagecalorie from "./routes/imagecalorietracker.js";
+import searchfood from "./routes/searchfood.js";
+
 import logger from "./config/logger.js";
 import fs from "fs";
 import path from "path";
 import cors from "cors";
-import searchfood from "./routes/searchfood.js";
+
 dotenv.config();
 
 const app = express();
 
-// ====== CORS Configuration ======
+// Set constants for better readability
+const PORT = process.env.PORT || 8089;
+
+// ====== Middleware Configuration ======
 app.use(
   cors({
     origin: "http://localhost:5173",
@@ -22,12 +30,13 @@ app.use(
   }),
 );
 
-app.use(express.json());
+// FIX: Only use the express.json with the high limit
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// ====== Trust proxy (fix X-Forwarded-For warning) ======
-app.set("trust proxy", 1); // trust first proxy (needed for rate-limit)
+app.set("trust proxy", 1);
 
-// ====== Check if keys exist ======
+// ====== Key Checks (Remains the same) ======
 const keysDir = path.join(process.cwd(), "keys");
 const privateKeyPath = path.join(keysDir, "private.key");
 const publicKeyPath = path.join(keysDir, "public.key");
@@ -37,48 +46,59 @@ if (!fs.existsSync(privateKeyPath) || !fs.existsSync(publicKeyPath)) {
   process.exit(1);
 }
 
-const privateKey = fs.readFileSync(privateKeyPath, "utf8");
-const publicKey = fs.readFileSync(publicKeyPath, "utf8");
+// Keys loaded but not used here for brevity
+// const privateKey = fs.readFileSync(privateKeyPath, "utf8");
+// const publicKey = fs.readFileSync(publicKeyPath, "utf8");
 
-// ====== Connect to MongoDB ======
-connectDB().catch((err) => {
-  console.error("❌ Failed to connect to MongoDB:", err.message);
-  process.exit(1);
-});
-
-// ====== Routes ======
-app.use("/api/auth", otpRoutes);
-app.use("/api", UserRoutes);
-app.use("/api/food", searchfood);
-
-// ====== Health Check ======
-app.get("/health", async (req, res) => {
-  let dbStatus = "disconnected";
+// ==========================================================
+// 🚀 ASYNC SERVER STARTUP FUNCTION (THE FIX)
+// ==========================================================
+async function startServer() {
   try {
-    const db = await connectDB();
-    await db.command({ ping: 1 });
-    dbStatus = "connected";
+    // 🛑 CRITICAL STEP: WAIT for the Mongoose connection to be READY
+    // This prevents the buffer timeout error in the router.
+    await connectDB();
+
+    // ====== Routes ======
+    app.use("/api/auth", otpRoutes);
+    app.use("/api/register", signuproute);
+    app.use("/api", UserRoutes);
+    app.use("/api/food", searchfood);
+    app.use("/api/track", imagecalorie); // Your calorie tracker route
+
+    // ====== Health Check (Uses the existing connection state) ======
+    app.get("/health", (req, res) => {
+      // Mongoose.connection.readyState will be 1 (connected) or 2 (connecting)
+      const dbStatus =
+        mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+
+      res.json({
+        status: "ok",
+        message: "Server healthy",
+        database: dbStatus,
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // ====== Global Error Handler ======
+    app.use((err, req, res, next) => {
+      logger.error(err.stack || err.message);
+      res.status(500).json({ error: err.message || "Server Error" });
+    });
+
+    // ====== Start Server ======
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
   } catch (err) {
-    dbStatus = "disconnected";
+    // If connectDB() fails, log it and prevent the server from running
+    logger.error(
+      "❌ CRITICAL FAILURE: Could not connect to MongoDB. Server not started.",
+      err.message,
+    );
+    process.exit(1);
   }
+}
 
-  res.json({
-    status: "ok",
-    message: "Server healthy",
-    database: dbStatus,
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// ====== Global Error Handler ======
-app.use((err, req, res, next) => {
-  logger.error(err.stack || err.message);
-  res.status(500).json({ error: err.message || "Server Error" });
-});
-
-// ====== Start Server ======
-const PORT = process.env.PORT || 8089;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+startServer();

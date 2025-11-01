@@ -18,6 +18,8 @@ const createRedisRateLimiter = ({ windowMs, max, keyGenerator, message }) =>
     legacyHeaders: false, // Disable X-RateLimit-* headers
   });
 
+// --- IDENTIFIER: IP ---
+
 /**
  * Rate limit by IP (send_email / login endpoint)
  * IPv6-safe using ipKeyGenerator
@@ -29,42 +31,49 @@ export const ipRateLimiter = createRedisRateLimiter({
   keyGenerator: ipKeyGenerator, // ✅ IPv6 safe
 });
 
+// --- IDENTIFIER: EMAIL / REQUEST BODY ---
+
 /**
- * Rate limit by username/email (login endpoint)
+ * Rate limit by email (login endpoint)
  * Prevent brute-force login attempts per account
  */
 export const loginRateLimiter = createRedisRateLimiter({
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: 30,
-  message: "Too many login attempts. Try again later.",
-  keyGenerator: (req) => req.body.identifier || req.ip,
+  message: "Too many login attempts. Try again later.", // Key: Use the email identifier from the request body
+  keyGenerator: (req) => req.body.email || req.body.identifier || req.ip,
 });
 
 /**
- * Rate limit by username/email (submit_otp endpoint)
+ * Rate limit by email (submit_otp endpoint)
  * Prevent too many OTP submissions per user per day
  */
 export const usernameRateLimiter = createRedisRateLimiter({
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
   max: 20,
-  message: "Too many OTP attempts for this user today. Try again tomorrow.",
-  keyGenerator: (req) => req.body.username || req.body.email,
+  message: "Too many OTP attempts for this email today. Try again tomorrow.", // Key: Use the email identifier from the request body or the JWT payload
+  keyGenerator: (req) => req.body.email || req.username || req.ip,
 });
 
 /**
- * Rate limit by user ID or username (refresh_token endpoint)
- * Prevent abuse of refresh tokens
+ * Rate limit for unauthenticated searching (e.g., /api/food/search)
+ */
+export const searchRateLimiter = createRedisRateLimiter({
+  windowMs: 24 * 60 * 60 * 1000, // 24 hours
+  max: 1000,
+  message: "Too many search requests for this email today. Try again tomorrow.", // Key: Use the email identifier from the request body
+  keyGenerator: (req) => req.body.email || req.ip,
+});
+
+// --- IDENTIFIER: USER ID (Authenticated) ---
+
+/**
+ * Rate limit by user ID (refresh_token endpoint and future authenticated routes)
+ * The user ID is assumed to be attached to the request object by the JWT middleware (`req.userId` or `req.user_id`).
  */
 export const refreshTokenRateLimiter = createRedisRateLimiter({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 5,
-  message: "Too many token refresh requests. Try again later.",
-  keyGenerator: (req) => req.userId || req.body.username,
-});
-
-export const searchRateLimiter = createRedisRateLimiter({
-  windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  max: 1000,
-  message: "Too many OTP attempts for this user today. Try again tomorrow.",
-  keyGenerator: (req) => req.body.username || req.body.email,
+  message: "Too many token refresh requests. Try again later.", // Key: Use the user ID attached by the middleware (`req.user_id`)
+  keyGenerator: (req) => req.user_id || req.userId || req.ip,
 });
