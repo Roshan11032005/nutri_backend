@@ -1,35 +1,20 @@
+// utils/otpService.js
 import redisClient from "../config/redisClient.js";
 import nodemailer from "nodemailer";
 import logger from "../config/logger.js";
 
-/**
- * Generate a 6-digit numeric OTP
- */
 export function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-/**
- * Send OTP via email and save in Redis
- * @param {string} email - user email
- * @param {string} username - unique username
- * @returns {Promise<string>} OTP sent
- */
-export async function sendOTP(email, username) {
+export async function sendOTP(email, username, type = "login") {
   const otp = generateOTP();
-  const key = `otp:${username}`;
+  const key = `otp:${type}:${username}`;
   const ttl = 10 * 60; // 10 minutes
 
-  // Save OTP in Redis
-  try {
-    await redisClient.set(key, otp, { EX: ttl });
-    logger.info(`OTP stored in Redis for ${username}`, { otp });
-  } catch (err) {
-    logger.error("Redis set failed", { error: err.message, username });
-    throw err;
-  }
+  await redisClient.set(key, otp, { EX: ttl });
+  logger.info(`OTP stored in Redis for ${type}:${username}`, { otp });
 
-  // Configure transporter
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT),
@@ -40,43 +25,29 @@ export async function sendOTP(email, username) {
     },
   });
 
-  // Verify SMTP connection
-  try {
-    await transporter.verify();
-    logger.info("SMTP connection verified successfully");
-  } catch (err) {
-    logger.error("SMTP verification failed", { error: err.message });
-    throw err;
-  }
+  const subject =
+    type === "signup"
+      ? "Verify your email - NutriBowl Signup"
+      : "Your NutriBowl Login OTP";
 
-  // Send OTP email
-  try {
-    await transporter.sendMail({
-      from: `"NutriBowl" <${process.env.SMTP_USER}>`,
-      to: email,
-      subject: "Your OTP",
-      text: `Hello ${username}, your OTP is ${otp}`,
-    });
-    logger.info("OTP email sent successfully", { email, username, otp });
-  } catch (err) {
-    logger.error("Failed to send OTP email", {
-      error: err.message,
-      email,
-      username,
-    });
-    throw err;
-  }
+  const text =
+    type === "signup"
+      ? `Hello ${username}, thank you for signing up! Your verification OTP is ${otp}`
+      : `Hello ${username}, your login OTP is ${otp}`;
 
+  await transporter.sendMail({
+    from: `"NutriBowl" <${process.env.SMTP_USER}>`,
+    to: email,
+    subject,
+    text,
+  });
+
+  logger.info(`OTP email sent for ${type}`, { email, username, otp });
   return otp;
 }
 
-/**
- * Verify OTP
- * @param {string} username
- * @param {string} otp - OTP provided by user
- */
-export async function verifyOTP(username, otp) {
-  const key = `otp:${username}`;
+export async function verifyOTP(username, otp, type = "login") {
+  const key = `otp:${type}:${username}`;
   const savedOtp = await redisClient.get(key);
 
   if (savedOtp && savedOtp === otp) {
